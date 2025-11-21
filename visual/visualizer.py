@@ -71,14 +71,14 @@ class TrafficVisualizer:
         
         # Stop lines (White solid)
         stop_line_width = 3
-        # North (stopping for Southbound traffic) - Right side of road
-        ax.plot([0, 0.5], [0.5, 0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
-        # South (stopping for Northbound traffic) - Right side of road (which is left in coords) -> x < 0
-        ax.plot([-0.5, 0], [-0.5, -0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
-        # East (stopping for Westbound traffic) - Top side (y > 0)
+        # North 
+        ax.plot([0, -0.5], [0.5, 0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
+        # South
+        ax.plot([0, 0.5], [-0.5, -0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
+        # East
         ax.plot([0.5, 0.5], [0, 0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
-        # West (stopping for Eastbound traffic) - Bottom side (y < 0)
-        ax.plot([-0.5, -0.5], [-0.5, 0], color=marking_color, linewidth=stop_line_width, zorder=1)
+        # West
+        ax.plot([-0.5, -0.5], [0, -0.5], color=marking_color, linewidth=stop_line_width, zorder=1)
 
         # Cars
         # Car dimensions
