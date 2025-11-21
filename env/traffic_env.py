@@ -9,10 +9,10 @@ class TrafficIntersectionEnv(gym.Env):
     Phase 0: North-South Green
     Phase 1: East-West Green
     """
-    def __init__(self):
+    def __init__(self, min_green_time=5, yellow_time=2, switching_penalty=10.0):
         super(TrafficIntersectionEnv, self).__init__()
 
-        # Action: 0 = Set Phase NS, 1 = Set Phase EW
+        # Action: 0 = Keep current phase, 1 = Switch phase
         self.action_space = spaces.Discrete(2)
 
         # Observation: [Q_North, Q_South, Q_East, Q_West, Current_Phase]
@@ -30,11 +30,20 @@ class TrafficIntersectionEnv(gym.Env):
         self.current_phase = 0 # Start with NS Green
         self.current_time = 0
         self.max_steps = 1000 # Episode duration
+        
+        # Switching constraints
+        self.min_green_time = min_green_time
+        self.yellow_time = yellow_time
+        self.switching_penalty = switching_penalty
+        self.last_switch_time = -self.min_green_time  # Allow immediate first switch
+        self.yellow_timer = 0  # Tracks remaining yellow light duration
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_time = 0
         self.current_phase = 0
+        self.last_switch_time = -self.min_green_time
+        self.yellow_timer = 0
         for lane in self.lanes:
             lane.reset()
         
@@ -43,17 +52,34 @@ class TrafficIntersectionEnv(gym.Env):
     def step(self, action):
         self.current_time += 1
         
-        # Apply Action (Switch light)
-        # Add logic here if you want a "yellow" phase or switching delay
-        self.current_phase = action
+        # Handle yellow light timer
+        if self.yellow_timer > 0:
+            self.yellow_timer -= 1
+            # All lights are red during yellow phase
+            phase_is_active = False
+        else:
+            # Action interpretation: 0 = Keep current phase, 1 = Switch phase
+            switch_requested = (action == 1)
+            time_since_switch = self.current_time - self.last_switch_time
+            
+            # Check if we can perform a switch
+            if switch_requested and time_since_switch >= self.min_green_time:
+                # Initiate phase switch with yellow light
+                self.current_phase = 1 - self.current_phase  # Toggle between 0 and 1
+                self.last_switch_time = self.current_time
+                self.yellow_timer = self.yellow_time
+                phase_is_active = False  # Yellow light means all red
+            else:
+                phase_is_active = True
 
         # Phase 0 (NS) Green: Lanes 0 and 1 flow
         # Phase 1 (EW) Green: Lanes 2 and 3 flow
-        ns_green = (self.current_phase == 0)
-        ew_green = (self.current_phase == 1)
+        ns_green = (self.current_phase == 0) and phase_is_active
+        ew_green = (self.current_phase == 1) and phase_is_active
 
         lane_queues = []
         total_step_wait = 0
+        total_throughput = 0
 
         # Update all lanes
         # Lanes 0,1 are NS. Lanes 2,3 are EW.
@@ -62,21 +88,25 @@ class TrafficIntersectionEnv(gym.Env):
             if i in [0, 1] and ns_green: is_green = True
             if i in [2, 3] and ew_green: is_green = True
             
-            q_len = lane.step(is_green, self.current_time)
+            q_len, discharged = lane.step(is_green, self.current_time)
             lane_queues.append(q_len)
             total_step_wait += q_len
+            total_throughput += discharged
 
         # Reward: Negative total waiting time (Minimize delay)
-        # You can add penalties for frequent switching if needed
+        # Apply penalty for switching
         reward = -1.0 * total_step_wait
+        if self.yellow_timer == self.yellow_time:  # Just switched
+            reward -= self.switching_penalty
 
         # Check termination
         terminated = self.current_time >= self.max_steps
         truncated = False
 
         info = {
-            "throughput": 0, # Needs tracking in Lane class to be accurate
-            "total_wait": total_step_wait
+            "throughput": total_throughput,
+            "total_wait": total_step_wait,
+            "yellow_timer": self.yellow_timer
         }
 
         return self._get_obs(), reward, terminated, truncated, info

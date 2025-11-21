@@ -16,9 +16,11 @@ class Lane:
 
         # 2. Discharge vehicles if green
         # Assuming 1 car passes per step if green (simplified flow)
+        discharged_count = 0
         if is_green and len(self.queue) > 0:
             departed_car = self.queue.popleft()
             wait_time = current_time - departed_car.arrival_time
+            discharged_count = 1
             # In a real sim, you might track this for metrics
         
         # 3. Calculate wait time for this step
@@ -26,7 +28,8 @@ class Lane:
         current_queue_len = len(self.queue)
         self.total_wait_time += current_queue_len
         
-        return current_queue_len
+        # Return tuple: (queue_length, discharged_count)
+        return current_queue_len, discharged_count
 
     def reset(self):
         self.queue.clear()
