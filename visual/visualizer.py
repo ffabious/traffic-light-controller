@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.patches import Circle, Rectangle, FancyBboxPatch
+from matplotlib.widgets import Button
+from matplotlib.animation import FuncAnimation
 import numpy as np
 
 
@@ -229,6 +231,143 @@ class TrafficVisualizer:
         plt.tight_layout(rect=[0, 0.08, 1, 1])
         return self.fig
     
+    def interactive_run(self, get_action_callback, max_steps=1000, interval=200):
+        """
+        Run the simulation interactively with buttons.
+        
+        Args:
+            get_action_callback: Function that takes (obs, info) and returns action
+            max_steps: Maximum number of steps to run
+            interval: Time between frames in ms
+        """
+        # Setup figure if not exists
+        if self.fig is None:
+            if self.mode == 'single':
+                self.fig, self.ax = plt.subplots(figsize=self.figsize)
+            else:
+                self.fig, self.axes = plt.subplots(1, 2, figsize=self.figsize)
+        
+        # Add space for buttons at the bottom
+        plt.subplots_adjust(bottom=0.2)
+        
+        # State
+        self.running = False
+        self.current_step = 0
+        self.max_steps = max_steps
+        self.obs, self.info = self.env.reset()
+        self.get_action = get_action_callback
+        
+        # Buttons
+        ax_play = plt.axes([0.7, 0.05, 0.1, 0.075])
+        ax_pause = plt.axes([0.81, 0.05, 0.1, 0.075])
+        ax_step = plt.axes([0.59, 0.05, 0.1, 0.075])
+        
+        self.btn_play = Button(ax_play, 'Play')
+        self.btn_pause = Button(ax_pause, 'Pause')
+        self.btn_step = Button(ax_step, 'Step')
+        
+        def play(event):
+            self.running = True
+            
+        def pause(event):
+            self.running = False
+            
+        def step(event):
+            self.running = False
+            self.update_frame(None)
+            plt.draw()
+            
+        self.btn_play.on_clicked(play)
+        self.btn_pause.on_clicked(pause)
+        self.btn_step.on_clicked(step)
+        
+        # Initial draw
+        self.update_frame('init')
+        
+        # Animation
+        self.anim = FuncAnimation(self.fig, self.update_frame, frames=range(max_steps), 
+                                  interval=interval, repeat=False, cache_frame_data=False)
+        plt.show()
+        
+    def update_frame(self, frame):
+        if frame == 'init':
+            # Just render current state (initial)
+            pass
+        elif not self.running and frame is not None:
+            return
+        elif self.current_step >= self.max_steps:
+            self.running = False
+            return
+        else:
+            # Step environment (if running or manual step)
+            # Get action
+            action = self.get_action(self.obs, self.info)
+            
+            # Step environment
+            self.obs, reward, terminated, truncated, self.info = self.env.step(action)
+            self.current_step += 1
+            
+            if terminated or truncated:
+                self.running = False
+                self.obs, self.info = self.env.reset()
+                self.current_step = 0
+
+        # Render
+        if self.mode == 'single':
+            queues = self.obs[:4]
+            phase = int(self.obs[4])
+            self.ax.clear()
+            self._draw_single_intersection(self.ax, queues, phase, "Traffic Intersection")
+            
+            phase_str = "NS Green" if phase == 0 else "EW Green"
+            info_text = f"Time: {self.current_step}\nPhase: {phase_str}"
+            if self.info:
+                info_text += f"\nThroughput: {self.info.get('throughput', 0)}"
+                info_text += f"\nTotal Wait: {self.info.get('total_wait', 0):.1f}"
+            
+            # Remove old text if exists (not easy, just redraw)
+            # We cleared ax, but fig text is separate.
+            # To avoid accumulating fig text, we should use ax.text or clear fig text.
+            # But _draw_single_intersection uses ax.
+            # The original render_single used fig.text.
+            # Let's use ax.text or title for simplicity in interactive mode, or manage a text artist.
+            
+            # Using ax.text for info to keep it simple and cleared with ax.clear()
+            self.ax.text(0.02, 0.98, info_text, transform=self.ax.transAxes,
+                        fontsize=10, verticalalignment='top',
+                        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+            
+        else:
+            queues_1 = self.obs[:4]
+            phase_1 = int(self.obs[4])
+            queues_2 = self.obs[5:9]
+            phase_2 = int(self.obs[9])
+            
+            for ax in self.axes:
+                ax.clear()
+            
+            self._draw_single_intersection(self.axes[0], queues_1, phase_1, "Intersection 1 (West)")
+            self._draw_single_intersection(self.axes[1], queues_2, phase_2, "Intersection 2 (East)")
+            
+            phase_str_1 = "NS Green" if phase_1 == 0 else "EW Green"
+            phase_str_2 = "NS Green" if phase_2 == 0 else "EW Green"
+            
+            info_text = f"Time: {self.current_step}\n"
+            info_text += f"Int1 Phase: {phase_str_1} | Int2 Phase: {phase_str_2}"
+            
+            if self.info:
+                info_text += f"\nThroughput: {self.info.get('throughput', 0)}"
+                info_text += f"\nTotal Wait: {self.info.get('total_wait', 0):.1f}"
+                
+            # Use figure text but we need to clear it or update it.
+            # Easier to use a fixed text artist.
+            if not hasattr(self, 'info_text_artist'):
+                self.info_text_artist = self.fig.text(0.5, 0.25, info_text, transform=self.fig.transFigure,
+                            fontsize=10, ha='center',
+                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+            else:
+                self.info_text_artist.set_text(info_text)
+
     def save_frame(self, filename):
         """Save current figure to file."""
         if self.fig is not None:
