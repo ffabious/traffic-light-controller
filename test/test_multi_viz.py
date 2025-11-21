@@ -12,8 +12,8 @@ for step in range(50):
     
     # Extract queues and phases
     queues_1 = obs[:4]
-    phase_1 = int(obs[4])
-    queues_2 = obs[5:9]
+    queues_2 = obs[4:8]
+    phase_1 = int(obs[8])
     phase_2 = int(obs[9])
     
     # Render both intersections

@@ -88,10 +88,11 @@ class TrafficIntersectionEnv(gym.Env):
             if i in [0, 1] and ns_green: is_green = True
             if i in [2, 3] and ew_green: is_green = True
             
-            q_len, discharged = lane.step(is_green, self.current_time)
+            q_len, discharged_vehicle = lane.step(is_green, self.current_time)
             lane_queues.append(q_len)
             total_step_wait += q_len
-            total_throughput += discharged
+            if discharged_vehicle:
+                total_throughput += 1
 
         # Reward: Negative total waiting time (Minimize delay)
         # Apply penalty for switching

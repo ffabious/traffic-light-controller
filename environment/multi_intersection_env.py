@@ -34,7 +34,15 @@ class MultiIntersectionEnv(gym.Env):
         # Create two intersections with 4 lanes each
         # Intersection 1: lanes 0-3 (N, S, E, W)
         # Intersection 2: lanes 4-7 (N, S, E, W)
-        self.lanes = [Lane(i) for i in range(8)]
+        self.lanes = []
+        for i in range(8):
+            # Disable random arrival for connecting lanes:
+            # Lane 2 (Int 1 East leg, incoming from East/Int2)
+            # Lane 7 (Int 2 West leg, incoming from West/Int1)
+            if i == 2 or i == 7:
+                self.lanes.append(Lane(i, arrival_rate=0.0))
+            else:
+                self.lanes.append(Lane(i))
         
         # Phase tracking for each intersection
         self.current_phase = [0, 0]  # Start with NS Green for both
@@ -62,13 +70,22 @@ class MultiIntersectionEnv(gym.Env):
     
     def _link_intersections(self):
         """
-        Route discharged vehicles from Intersection 1 East (lane 2)
-        to Intersection 2 West (lane 7).
-        This is called after both intersections have been stepped.
+        Route discharged vehicles between intersections.
+        Int 1 West (Lane 3) -> Int 2 West (Lane 7) (Eastbound traffic)
+        Int 2 East (Lane 6) -> Int 1 East (Lane 2) (Westbound traffic)
         """
-        # In a more complex model, we'd track vehicles and apply routing logic here.
-        # For now, this is a placeholder for future enhancement.
-        pass
+        # Link Int 1 West (Lane 3) -> Int 2 West (Lane 7)
+        if 3 in self.discharged_vehicles:
+            for veh in self.discharged_vehicles[3]:
+                # Reset arrival time as it enters new queue
+                veh.arrival_time = self.current_time
+                self.lanes[7].queue.append(veh)
+                
+        # Link Int 2 East (Lane 6) -> Int 1 East (Lane 2)
+        if 6 in self.discharged_vehicles:
+            for veh in self.discharged_vehicles[6]:
+                veh.arrival_time = self.current_time
+                self.lanes[2].queue.append(veh)
     
     def step(self, action):
         self.current_time += 1
@@ -76,6 +93,8 @@ class MultiIntersectionEnv(gym.Env):
         total_reward = 0
         total_throughput = 0
         total_wait = 0
+        
+        self.discharged_vehicles = {} # Store discharged vehicles by lane index
         
         # Process each intersection separately
         for intersection_idx in range(2):
@@ -116,10 +135,16 @@ class MultiIntersectionEnv(gym.Env):
                 if lane_idx in [2, 3] and ew_green:  # E and W lanes
                     is_green = True
                 
-                q_len, discharged = self.lanes[global_lane_idx].step(
+                q_len, discharged_vehicle = self.lanes[global_lane_idx].step(
                     is_green, self.current_time
                 )
-                step_throughput += discharged
+                
+                if discharged_vehicle:
+                    step_throughput += 1
+                    if global_lane_idx not in self.discharged_vehicles:
+                        self.discharged_vehicles[global_lane_idx] = []
+                    self.discharged_vehicles[global_lane_idx].append(discharged_vehicle)
+                    
                 step_wait += q_len
             
             # Accumulate metrics
@@ -148,7 +173,7 @@ class MultiIntersectionEnv(gym.Env):
     
     def _get_obs(self):
         """
-        Observation: [Q_N1, Q_S1, Q_E1, Q_W1, Phase1, Q_N2, Q_S2, Q_E2, Q_W2, Phase2]
+        Observation: [Q_N1, Q_S1, Q_E1, Q_W1, Q_N2, Q_S2, Q_E2, Q_W2, Phase1, Phase2]
         """
         obs = []
         for i in range(8):
