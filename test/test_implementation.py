@@ -2,8 +2,8 @@
 Quick test script to verify all implemented components work correctly.
 """
 
-from environment.traffic_env import TrafficIntersectionEnv
-from environment.multi_intersection_env import MultiIntersectionEnv
+from environment.single_env import SingleIntersectionEnv
+from environment.multi_env import MultiIntersectionEnv
 
 
 def test_single_intersection():
@@ -12,7 +12,7 @@ def test_single_intersection():
     print("Testing Single Intersection Environment")
     print("=" * 60)
     
-    env = TrafficIntersectionEnv(min_green_time=5, yellow_time=2, switching_penalty=10.0)
+    env = SingleIntersectionEnv(min_green_time=5, yellow_time=2, switching_penalty=10.0)
     obs, info = env.reset()
     
     print(f"Initial observation shape: {obs.shape}")

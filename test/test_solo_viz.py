@@ -1,8 +1,8 @@
-from environment.traffic_env import TrafficIntersectionEnv
+from environment.single_env import SingleIntersectionEnv
 from visual.visualizer import TrafficVisualizer
 
 # Create environment
-env = TrafficIntersectionEnv()
+env = SingleIntersectionEnv()
 obs, info = env.reset()
 
 # Create visualizer

@@ -1,4 +1,4 @@
-from environment.traffic_env import TrafficIntersectionEnv
+from environment.single_env import SingleIntersectionEnv
 from visual.visualizer import TrafficVisualizer
 
 def get_action(obs, info):
@@ -10,7 +10,7 @@ def get_action(obs, info):
 
 def main():
     # Create environment
-    env = TrafficIntersectionEnv()
+    env = SingleIntersectionEnv()
     
     # Create visualizer
     viz = TrafficVisualizer(env, mode='single', figsize=(10, 8))

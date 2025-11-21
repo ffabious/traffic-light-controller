@@ -3,14 +3,14 @@ from gymnasium import spaces
 import numpy as np
 from environment.lane import Lane
 
-class TrafficIntersectionEnv(gym.Env):
+class SingleIntersectionEnv(gym.Env):
     """
     A single intersection environment.
     Phase 0: North-South Green
     Phase 1: East-West Green
     """
     def __init__(self, min_green_time=5, yellow_time=2, switching_penalty=10.0):
-        super(TrafficIntersectionEnv, self).__init__()
+        super(SingleIntersectionEnv, self).__init__()
 
         # Action: 0 = Keep current phase, 1 = Switch phase
         self.action_space = spaces.Discrete(2)

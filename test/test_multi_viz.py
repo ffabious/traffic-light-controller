@@ -1,4 +1,4 @@
-from environment.multi_intersection_env import MultiIntersectionEnv
+from environment.multi_env import MultiIntersectionEnv
 from visual.visualizer import TrafficVisualizer
 
 env = MultiIntersectionEnv()
