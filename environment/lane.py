@@ -1,6 +1,6 @@
 from collections import deque
 import numpy as np
-from vehicle import Vehicle
+from environment.vehicle import Vehicle
 
 class Lane:
     def __init__(self, id, arrival_rate=0.3):

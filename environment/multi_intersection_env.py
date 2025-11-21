@@ -1,7 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from lane import Lane
+from environment.lane import Lane
 
 
 class MultiIntersectionEnv(gym.Env):
