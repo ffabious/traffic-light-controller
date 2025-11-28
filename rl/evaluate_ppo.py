@@ -3,7 +3,7 @@ Evaluation script for trained PPO agent on Multi-Intersection Environment.
 Compares performance against a Fixed-Time Controller baseline.
 
 Usage:
-    python rl/evaluate_ppo.py --model_path models/ppo_multi.pth --episodes 100 --compare_baseline
+    python rl/evaluate_ppo.py --model_path models/ppo_model.pth --episodes 100 --compare_baseline
 """
 
 import argparse

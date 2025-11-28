@@ -2,7 +2,7 @@
 Training script for PPO agent on multi-intersection environment.
 
 Usage:
-    python rl/train_ppo.py --timesteps 1000000 --save_path models/ppo_agent.pth
+    python rl/train_ppo.py --timesteps 1000000 --save_path models/ppo_model.pth
 """
 
 import argparse
