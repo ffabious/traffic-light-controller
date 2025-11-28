@@ -80,7 +80,7 @@ Two intersections connected in series:
 
 ### Observation Space (State)
 
-The observation is a numpy array of shape `(10,)` containing:
+The observation is a numpy array of shape `(12,)` containing:
 
 | Index | Intersection | Description                      |
 | ----- | ------------ | -------------------------------- |
@@ -88,6 +88,8 @@ The observation is a numpy array of shape `(10,)` containing:
 | 4-7   | **2**        | Queues: North, South, East, West |
 | 8     | **1**        | Current Phase (0=NS, 1=EW)       |
 | 9     | **2**        | Current Phase (0=NS, 1=EW)       |
+| 10    | **1**        | Time Elapsed Since Last Switch   |
+| 11    | **2**        | Time Elapsed Since Last Switch   |
 
 ### Action Space
 

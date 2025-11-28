@@ -11,7 +11,7 @@ class MultiIntersectionEnv(gym.Env):
     - Intersection 2: North-South (N, S, E, W lanes)
     - Link: Intersection 1 East lane feeds into Intersection 2 West lane
     
-    Observation: [Q_N1, Q_S1, Q_E1, Q_W1, Phase1, Q_N2, Q_S2, Q_E2, Q_W2, Phase2]
+    Observation: [Q_N1, ... Q_W2, Phase1, Phase2, Time1, Time2]
     Action: [action_for_intersection_1, action_for_intersection_2]
     """
     
@@ -22,12 +22,12 @@ class MultiIntersectionEnv(gym.Env):
         # Each intersection: 0 = Keep phase, 1 = Switch phase
         self.action_space = spaces.MultiDiscrete([2, 2])
         
-        # Observation: 10 values (5 per intersection)
+        # Observation: 12 values (5 per intersection + 2 time features)
         self.max_cars = 50
         self.observation_space = spaces.Box(
             low=0,
-            high=self.max_cars,
-            shape=(10,),
+            high=np.array([self.max_cars]*8 + [1, 1] + [1000, 1000]), # Added time limits
+            shape=(12,), # Increased dim for time features
             dtype=np.float32
         )
         
@@ -173,7 +173,7 @@ class MultiIntersectionEnv(gym.Env):
     
     def _get_obs(self):
         """
-        Observation: [Q_N1, Q_S1, Q_E1, Q_W1, Q_N2, Q_S2, Q_E2, Q_W2, Phase1, Phase2]
+        Observation: [Q_N1, ... Q_W2, Phase1, Phase2, Time1, Time2]
         """
         obs = []
         for i in range(8):
@@ -181,11 +181,17 @@ class MultiIntersectionEnv(gym.Env):
         obs.append(self.current_phase[0])
         obs.append(self.current_phase[1])
         
+        # Normalized time features (added for PPO stability)
+        t1 = (self.current_time - self.last_switch_time[0]) / 100.0
+        t2 = (self.current_time - self.last_switch_time[1]) / 100.0
+        obs.append(t1)
+        obs.append(t2)
+        
         return np.array(obs, dtype=np.float32)
     
     def render(self):
         obs = self._get_obs()
         print(f"Time: {self.current_time}")
-        print(f"Intersection 1 - Phase: {'NS' if obs[4]==0 else 'EW'} | Queues: N={obs[0]}, S={obs[1]}, E={obs[2]}, W={obs[3]}")
-        print(f"Intersection 2 - Phase: {'NS' if obs[9]==0 else 'EW'} | Queues: N={obs[5]}, S={obs[6]}, E={obs[7]}, W={obs[8]}")
+        print(f"Intersection 1 - Phase: {'NS' if obs[8]==0 else 'EW'} | Time: {obs[10]:.2f} | Queues: N={obs[0]}, S={obs[1]}, E={obs[2]}, W={obs[3]}")
+        print(f"Intersection 2 - Phase: {'NS' if obs[9]==0 else 'EW'} | Time: {obs[11]:.2f} | Queues: N={obs[4]}, S={obs[5]}, E={obs[6]}, W={obs[7]}")
         print()
