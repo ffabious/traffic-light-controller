@@ -9,7 +9,6 @@ import argparse
 import os
 import sys
 import numpy as np
-from collections import defaultdict
 
 # Add parent directory to path to allow imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from environment.single_env import SingleIntersectionEnv
 from rl.dqn_agent import DQNAgent
 from baseline import FixedTimeController
+from metrics.traffic_metrics import create_metrics_tracker
 
 
 def evaluate_agent(
@@ -27,7 +27,8 @@ def evaluate_agent(
     yellow_time=2,
     switching_penalty=10.0,
     render=False,
-    verbose=True
+    verbose=True,
+    save_dir="metrics/output/dqn"
 ):
     """
     Evaluate trained DQN agent.
@@ -56,18 +57,12 @@ def evaluate_agent(
     agent = DQNAgent(state_dim=5, action_dim=2)
     agent.load(model_path)
     agent.epsilon = 0.0  # No exploration during evaluation
-    
-    # Metrics
-    episode_rewards = []
-    episode_lengths = []
-    episode_throughputs = []
-    episode_wait_times = []
-    episode_switches = []
-    
-    # Per-episode detailed metrics
-    lane_queue_stats = defaultdict(list)
-    phase_distribution = defaultdict(int)
-    
+
+    metrics_tracker = create_metrics_tracker(env_type="single", num_lanes=4)
+
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+
     print("=" * 60)
     print("Evaluating DQN Agent")
     print("=" * 60)
@@ -77,102 +72,56 @@ def evaluate_agent(
     
     for episode in range(num_episodes):
         obs, info = env.reset()
-        episode_reward = 0
-        episode_switches_count = 0
-        previous_phase = obs[4]
-        
-        # Track cumulative metrics
-        cumulative_throughput = 0
-        cumulative_wait_time = 0
-        
+
         for step in range(max_steps):
             # Select action (no exploration)
             action = agent.select_action(obs, training=False)
             
-            # Track phase switches
-            if action == 1:  # Switch action
-                episode_switches_count += 1
-            
             # Step environment
-            obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-            
-            episode_reward += reward
-            
-            # Accumulate cumulative metrics (info contains per-step values)
-            cumulative_throughput += info.get('throughput', 0)
-            cumulative_wait_time += info.get('total_wait', 0)
-            
-            # Track metrics
-            for i in range(4):
-                lane_queue_stats[i].append(obs[i])
-            
-            phase_distribution[int(obs[4])] += 1
-            
+
+            yellow_active = info.get('yellow_timer', 0) > 0
+
+            metrics_tracker.update_step(
+                queues=obs[:4].tolist(),
+                throughput=info.get('throughput', 0),
+                wait_time=info.get('total_wait', 0),
+                phase=int(obs[4]),
+                reward=reward,
+                action=action,
+                yellow_active=yellow_active,
+                info=info
+            )
+
+            obs = next_obs
+
             if render:
                 env.render()
             
             if done:
                 break
-        
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(step + 1)
-        episode_throughputs.append(cumulative_throughput)
-        episode_wait_times.append(cumulative_wait_time)
-        episode_switches.append(episode_switches_count)
-        
+
+        episode_metrics = metrics_tracker.finalize_episode()
+
         if verbose and (episode + 1) % 10 == 0:
             print(f"Episode {episode + 1}/{num_episodes} | "
-                  f"Reward: {episode_reward:.2f} | "
-                  f"Length: {step + 1} | "
-                  f"Throughput: {cumulative_throughput} | "
-                  f"Wait: {cumulative_wait_time:.2f}")
-    
-    # Compute statistics
-    metrics = {
-        'episode_rewards': episode_rewards,
-        'episode_lengths': episode_lengths,
-        'episode_throughputs': episode_throughputs,
-        'episode_wait_times': episode_wait_times,
-        'episode_switches': episode_switches,
-        'mean_reward': np.mean(episode_rewards),
-        'std_reward': np.std(episode_rewards),
-        'mean_length': np.mean(episode_lengths),
-        'std_length': np.std(episode_lengths),
-        'mean_throughput': np.mean(episode_throughputs),
-        'std_throughput': np.std(episode_throughputs),
-        'mean_wait_time': np.mean(episode_wait_times),
-        'std_wait_time': np.std(episode_wait_times),
-        'mean_switches': np.mean(episode_switches),
-        'std_switches': np.std(episode_switches),
-        'lane_queue_stats': {k: {
-            'mean': np.mean(v),
-            'std': np.std(v),
-            'max': np.max(v)
-        } for k, v in lane_queue_stats.items()},
-        'phase_distribution': dict(phase_distribution)
-    }
-    
-    # Print summary
-    print("\n" + "=" * 60)
-    print("Evaluation Summary")
-    print("=" * 60)
-    print(f"Mean Reward: {metrics['mean_reward']:.2f} ± {metrics['std_reward']:.2f}")
-    print(f"Mean Episode Length: {metrics['mean_length']:.1f} ± {metrics['std_length']:.1f}")
-    print(f"Mean Throughput (cumulative): {metrics['mean_throughput']:.2f} ± {metrics['std_throughput']:.2f}")
-    print(f"Mean Wait Time (cumulative): {metrics['mean_wait_time']:.2f} ± {metrics['std_wait_time']:.2f}")
-    print(f"Mean Switches per Episode: {metrics['mean_switches']:.2f} ± {metrics['std_switches']:.2f}")
-    print("\nLane Queue Statistics:")
-    lane_names = ['North', 'South', 'East', 'West']
-    for i, name in enumerate(lane_names):
-        stats = metrics['lane_queue_stats'][i]
-        print(f"  {name}: Mean={stats['mean']:.2f}, Std={stats['std']:.2f}, Max={stats['max']:.1f}")
-    print("\nPhase Distribution:")
-    print(f"  Phase 0 (NS Green): {metrics['phase_distribution'].get(0, 0)} steps")
-    print(f"  Phase 1 (EW Green): {metrics['phase_distribution'].get(1, 0)} steps")
-    print("=" * 60)
-    
-    return metrics
+                  f"Reward: {episode_metrics['total_reward']:>8.2f} | "
+                  f"Throughput: {episode_metrics['total_throughput']:>6.0f} | "
+                  f"Avg Queue: {episode_metrics['mean_queue_length']:>6.2f} | "
+                  f"Service Level: {episode_metrics['service_level']:>5.1%} | "
+                  f"Fairness: {episode_metrics['fairness_index']:>5.3f}"
+            )
+
+
+    print()
+    metrics_tracker.print_summary(detailed=True)
+
+    if save_dir:
+        metrics_file = os.path.join(save_dir, "dqn_metrics.json")
+        metrics_tracker.save_to_file(metrics_file)
+
+    return metrics_tracker
 
 
 def evaluate_baseline_agent(
@@ -229,17 +178,8 @@ def evaluate_baseline_agent(
         travel_time=8
     )
     
-    # Metrics (same structure as DQN evaluation)
-    episode_rewards = []
-    episode_lengths = []
-    episode_throughputs = []
-    episode_wait_times = []
-    episode_switches = []
-    
-    # Per-episode detailed metrics
-    lane_queue_stats = defaultdict(list)
-    phase_distribution = defaultdict(int)
-    
+    metrics_tracker = create_metrics_tracker(env_type="single", num_lanes=4)
+
     if verbose:
         print("=" * 60)
         print("Evaluating Baseline (FixedTimeController)")
@@ -254,14 +194,7 @@ def evaluate_baseline_agent(
     for episode in range(num_episodes):
         obs, info = env.reset()
         controller.reset()
-        episode_reward = 0
-        episode_switches_count = 0
-        previous_phase = obs[4]
-        
-        # Track cumulative metrics
-        cumulative_throughput = 0
-        cumulative_wait_time = 0
-        
+
         for step in range(max_steps):
             # Get action from baseline controller
             # Controller returns tuple (action1, action2), use action1 for single intersection
@@ -269,88 +202,42 @@ def evaluate_baseline_agent(
             actions = controller.get_action(step)
             action = actions[0]  # Use first intersection's action
             
-            # Track phase switches
-            if action == 1:  # Switch action
-                episode_switches_count += 1
-            
             # Step environment
-            obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-            
-            episode_reward += reward
-            
-            # Accumulate cumulative metrics (info contains per-step values)
-            cumulative_throughput += info.get('throughput', 0)
-            cumulative_wait_time += info.get('total_wait', 0)
-            
-            # Track metrics
-            for i in range(4):
-                lane_queue_stats[i].append(obs[i])
-            
-            phase_distribution[int(obs[4])] += 1
-            
+
+            yellow_active = info.get('yellow_timer', 0) > 0
+
+            metrics_tracker.update_step(
+                queues=obs[:4].tolist(),
+                throughput=info.get('throughput', 0),
+                wait_time=info.get('total_wait', 0),
+                phase=int(obs[4]),
+                reward=reward,
+                action=action,
+                yellow_active=yellow_active,
+                info=info
+            )
+
+            obs = next_obs
+
             if done:
                 break
-        
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(step + 1)
-        episode_throughputs.append(cumulative_throughput)
-        episode_wait_times.append(cumulative_wait_time)
-        episode_switches.append(episode_switches_count)
-        
+
+        episode_metrics = metrics_tracker.finalize_episode()
+
         if verbose and (episode + 1) % 10 == 0:
             print(f"Episode {episode + 1}/{num_episodes} | "
-                  f"Reward: {episode_reward:.2f} | "
-                  f"Length: {step + 1} | "
-                  f"Throughput: {cumulative_throughput} | "
-                  f"Wait: {cumulative_wait_time:.2f}")
-    
-    # Compute statistics (same format as DQN evaluation)
-    metrics = {
-        'episode_rewards': episode_rewards,
-        'episode_lengths': episode_lengths,
-        'episode_throughputs': episode_throughputs,
-        'episode_wait_times': episode_wait_times,
-        'episode_switches': episode_switches,
-        'mean_reward': np.mean(episode_rewards),
-        'std_reward': np.std(episode_rewards),
-        'mean_length': np.mean(episode_lengths),
-        'std_length': np.std(episode_lengths),
-        'mean_throughput': np.mean(episode_throughputs),
-        'std_throughput': np.std(episode_throughputs),
-        'mean_wait_time': np.mean(episode_wait_times),
-        'std_wait_time': np.std(episode_wait_times),
-        'mean_switches': np.mean(episode_switches),
-        'std_switches': np.std(episode_switches),
-        'lane_queue_stats': {k: {
-            'mean': np.mean(v),
-            'std': np.std(v),
-            'max': np.max(v)
-        } for k, v in lane_queue_stats.items()},
-        'phase_distribution': dict(phase_distribution)
-    }
+                  f"Reward: {episode_metrics['total_reward']:>8.2f} | "
+                  f"Throughput: {episode_metrics['total_throughput']:>6.0f} | "
+                  f"Avg Queue: {episode_metrics['mean_queue_length']:>6.2f} | "
+                  f"Service Level: {episode_metrics['service_level']:>5.1%} | "
+                  f"Fairness: {episode_metrics['fairness_index']:>5.3f}")
     
     if verbose:
-        # Print summary
-        print("\n" + "=" * 60)
-        print("Baseline Evaluation Summary")
-        print("=" * 60)
-        print(f"Mean Reward: {metrics['mean_reward']:.2f} ± {metrics['std_reward']:.2f}")
-        print(f"Mean Episode Length: {metrics['mean_length']:.1f} ± {metrics['std_length']:.1f}")
-        print(f"Mean Throughput (cumulative): {metrics['mean_throughput']:.2f} ± {metrics['std_throughput']:.2f}")
-        print(f"Mean Wait Time (cumulative): {metrics['mean_wait_time']:.2f} ± {metrics['std_wait_time']:.2f}")
-        print(f"Mean Switches per Episode: {metrics['mean_switches']:.2f} ± {metrics['std_switches']:.2f}")
-        print("\nLane Queue Statistics:")
-        lane_names = ['North', 'South', 'East', 'West']
-        for i, name in enumerate(lane_names):
-            stats = metrics['lane_queue_stats'][i]
-            print(f"  {name}: Mean={stats['mean']:.2f}, Std={stats['std']:.2f}, Max={stats['max']:.1f}")
-        print("\nPhase Distribution:")
-        print(f"  Phase 0 (NS Green): {metrics['phase_distribution'].get(0, 0)} steps")
-        print(f"  Phase 1 (EW Green): {metrics['phase_distribution'].get(1, 0)} steps")
-        print("=" * 60)
-    
-    return metrics
+        metrics_tracker.print_summary(detailed=True)
+
+    return metrics_tracker
 
 
 def compare_with_baseline(
@@ -361,7 +248,9 @@ def compare_with_baseline(
     yellow_time=2,
     switching_penalty=10.0,
     green_time_ns=None,
-    green_time_ew=None
+    green_time_ew=None,
+    save_dir="metrics/output/dqn"
+
 ):
     """
     Compare DQN agent with baseline FixedTimeController.
@@ -379,6 +268,9 @@ def compare_with_baseline(
     Returns:
         Comparison metrics
     """
+
+    os.makedirs(save_dir, exist_ok=True)
+
     # Evaluate DQN
     print("Evaluating DQN Agent...")
     dqn_metrics = evaluate_agent(
@@ -386,7 +278,7 @@ def compare_with_baseline(
         min_green_time, yellow_time, switching_penalty,
         render=False, verbose=False
     )
-    
+
     # Evaluate baseline
     print("\nEvaluating Baseline (FixedTimeController)...")
     baseline_metrics = evaluate_baseline_agent(
@@ -395,44 +287,146 @@ def compare_with_baseline(
         green_time_ns, green_time_ew,
         verbose=False
     )
-    
-    # Print comparison
-    print("\n" + "=" * 60)
-    print("Comparison: DQN vs Baseline")
-    print("=" * 60)
-    print(f"{'Metric':<25} {'DQN':<20} {'Baseline':<20} {'Improvement':<15}")
-    print("-" * 80)
-    
-    # Cumulative Reward (same as mean_reward)
-    reward_improvement = ((dqn_metrics['mean_reward'] - baseline_metrics['mean_reward']) / 
-                         abs(baseline_metrics['mean_reward']) * 100) if baseline_metrics['mean_reward'] != 0 else 0.0
-    print(f"{'Mean Cumulative Reward':<25} {dqn_metrics['mean_reward']:<20.2f} "
-          f"{baseline_metrics['mean_reward']:<20.2f} {reward_improvement:>14.1f}%")
-    
-    # Cumulative Throughput
-    throughput_improvement = ((dqn_metrics['mean_throughput'] - baseline_metrics['mean_throughput']) / 
-                             baseline_metrics['mean_throughput'] * 100) if baseline_metrics['mean_throughput'] != 0 else 0.0
-    print(f"{'Mean Cumulative Throughput':<25} {dqn_metrics['mean_throughput']:<20.2f} "
-          f"{baseline_metrics['mean_throughput']:<20.2f} {throughput_improvement:>14.1f}%")
-    
-    # Cumulative Wait Time (lower is better, so improvement is inverted)
-    wait_improvement = ((baseline_metrics['mean_wait_time'] - dqn_metrics['mean_wait_time']) / 
-                       baseline_metrics['mean_wait_time'] * 100) if baseline_metrics['mean_wait_time'] != 0 else 0.0
-    print(f"{'Mean Cumulative Wait Time':<25} {dqn_metrics['mean_wait_time']:<20.2f} "
-          f"{baseline_metrics['mean_wait_time']:<20.2f} {wait_improvement:>14.1f}%")
-    
-    # Switches per Episode
-    switches_improvement = ((baseline_metrics['mean_switches'] - dqn_metrics['mean_switches']) / 
-                           baseline_metrics['mean_switches'] * 100) if baseline_metrics['mean_switches'] != 0 else 0.0
-    print(f"{'Mean Switches/Episode':<25} {dqn_metrics['mean_switches']:<20.2f} "
-          f"{baseline_metrics['mean_switches']:<20.2f} {switches_improvement:>14.1f}%")
-    
+
+    # Print detailed comparison
+    print("\n" + "=" * 80)
+    print("COMPARISON RESULTS")
     print("=" * 80)
-    
+
+    dqn_summary = dqn_metrics.get_summary_statistics()
+    baseline_summary = baseline_metrics.get_summary_statistics()
+
+    comparison_metrics = [
+        ('total_reward', 'Total Reward', 'higher', True),
+        ('mean_queue_length', 'Mean Queue Length', 'lower', False),
+        ('max_queue_length', 'Max Queue Length', 'lower', False),
+        ('total_throughput', 'Total Throughput', 'higher', True),
+        ('mean_wait_time', 'Mean Wait Time', 'lower', False),
+        ('throughput_rate', 'Throughput Rate', 'higher', True),
+        ('system_efficiency', 'System Efficiency', 'higher', True),
+        ('fairness_index', 'Fairness Index', 'higher', True),
+        ('service_level', 'Service Level', 'higher', True),
+        ('congestion_level', 'Congestion Level', 'lower', False),
+        ('queue_imbalance', 'Queue Imbalance', 'lower', False),
+        ('queue_oscillation', 'Queue Oscillation', 'lower', False),
+        ('phase_switches', 'Phase Switches', 'lower', False),
+        ('avg_delay_per_vehicle', 'Avg Delay/Vehicle', 'lower', False),
+    ]
+
+    print(f"\n{'Metric':<30} {'DQN':<20} {'Baseline':<20} {'Improvement':<15} {'Winner':<10}")
+    print("-" * 95)
+
+    comparison_results = {}
+
+    for metric_key, metric_name, direction, higher_better in comparison_metrics:
+        if metric_key in dqn_summary and metric_key in baseline_summary:
+            dqn_val = dqn_summary[metric_key]['mean']
+            baseline_val = baseline_summary[metric_key]['mean']
+
+            # Calculate improvement
+            if baseline_val != 0:
+                if higher_better:
+                    improvement = ((dqn_val - baseline_val) / abs(baseline_val)) * 100
+                else:
+                    improvement = ((baseline_val - dqn_val) / abs(baseline_val)) * 100
+            else:
+                improvement = 0.0
+
+            # Determine winner
+            if higher_better:
+                winner = "DQN" if dqn_val > baseline_val else "Baseline"
+            else:
+                winner = "DQN" if dqn_val < baseline_val else "Baseline"
+
+            # Color code improvement
+            if improvement > 0:
+                imp_str = f"+{improvement:>6.2f}%"
+            else:
+                imp_str = f"{improvement:>7.2f}%"
+
+            print(f"{metric_name:<30} {dqn_val:<20.4f} {baseline_val:<20.4f} "
+                  f"{imp_str:<15} {winner:<10}")
+
+            comparison_results[metric_key] = {
+                'dqn': dqn_val,
+                'baseline': baseline_val,
+                'improvement': improvement,
+                'winner': winner
+            }
+
+    print("=" * 95)
+
+    # Calculate overall score
+    dqn_wins = sum(1 for v in comparison_results.values() if v['winner'] == 'DQN')
+    baseline_wins = sum(1 for v in comparison_results.values() if v['winner'] == 'Baseline')
+
+    print(f"\nOverall performance:")
+    print(f"  DQN wins: {dqn_wins}/{len(comparison_results)}")
+    print(f"  Baseline wins: {baseline_wins}/{len(comparison_results)}")
+
+    avg_improvement = np.mean([v['improvement'] for v in comparison_results.values()])
+    print(f"  Average Improvement: {avg_improvement:+.2f}%")
+
+    # Statistical summary
+    print(f"\n{'─'*95}")
+    print("Key performance indicators:")
+    print(f"{'─'*95}")
+
+    kpis = [
+        ('total_reward', 'Cumulative Reward'),
+        ('throughput_rate', 'Vehicles/Step'),
+        ('avg_delay_per_vehicle', 'Delay/Vehicle'),
+        ('service_level', 'Service Level'),
+        ('fairness_index', 'Fairness Index')
+    ]
+
+    for metric_key, metric_name in kpis:
+        if metric_key in comparison_results:
+            result = comparison_results[metric_key]
+            print(f"  {metric_name:<25}: DQN={result['dqn']:>10.4f}, "
+                  f"Baseline={result['baseline']:>10.4f}, "
+                  f"Δ={result['improvement']:>+7.2f}%")
+
+    print("=" * 95 + "\n")
+
+    # Save comparison results
+    comparison_file = os.path.join(save_dir, "comparison_results.txt")
+    with open(comparison_file, 'w') as f:
+        f.write("=" * 80 + "\n")
+        f.write("COMPARISON RESULTS\n")
+        f.write("=" * 80 + "\n\n")
+
+        f.write(f"DQN Model: {model_path}\n")
+        f.write(f"Episodes Evaluated: {num_episodes}\n")
+        f.write(f"Max Steps per Episode: {max_steps}\n\n")
+
+        f.write(f"{'Metric':<30} {'DQN':<20} {'Baseline':<20} {'Improvement':<15}\n")
+        f.write("-" * 85 + "\n")
+
+        for metric_key, metric_name, _, _ in comparison_metrics:
+            if metric_key in comparison_results:
+                result = comparison_results[metric_key]
+                f.write(f"{metric_name:<30} {result['dqn']:<20.4f} "
+                        f"{result['baseline']:<20.4f} {result['improvement']:>+7.2f}%\n")
+
+        f.write("\n" + "=" * 80 + "\n")
+        f.write(f"DQN Wins: {dqn_wins}/{len(comparison_results)}\n")
+        f.write(f"Baseline Wins: {baseline_wins}/{len(comparison_results)}\n")
+        f.write(f"Average Improvement: {avg_improvement:+.2f}%\n")
+
+    print(f"Comparison results saved to {comparison_file}")
+
+    # Save individual metrics
+    dqn_metrics.save_to_file(os.path.join(save_dir, "dqn_metrics.json"))
+    baseline_metrics.save_to_file(os.path.join(save_dir, "baseline_metrics.json"))
+
     return {
         'dqn': dqn_metrics,
-        'baseline': baseline_metrics
+        'baseline': baseline_metrics,
+        'comparison': comparison_results
     }
+
+
 
 
 def main():

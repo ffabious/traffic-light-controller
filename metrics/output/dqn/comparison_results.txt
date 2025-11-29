@@ -1,0 +1,29 @@
+================================================================================
+COMPARISON RESULTS
+================================================================================
+
+DQN Model: models/dqn_model.pth
+Episodes Evaluated: 100
+Max Steps per Episode: 1000
+
+Metric                         DQN                  Baseline             Improvement    
+-------------------------------------------------------------------------------------
+Total Reward                   -30125.8200          -50401.5400           +40.23%
+Mean Queue Length              7.1976               12.2198               +41.10%
+Max Queue Length               27.2100              36.6600               +25.78%
+Total Throughput               1164.6600            1115.3700              +4.42%
+Mean Wait Time                 28.8258              48.9615               +41.13%
+Throughput Rate                1.1647               1.1154                 +4.42%
+System Efficiency              0.0491               0.0242               +102.85%
+Fairness Index                 0.9332               0.8625                 +8.20%
+Service Level                  0.9607               0.9624                 -0.18%
+Congestion Level               0.1799               0.3055                +41.10%
+Queue Imbalance                0.5174               0.5256                 +1.55%
+Queue Oscillation              0.4077               0.4081                 +0.10%
+Phase Switches                 129.9100             143.0000               +9.15%
+Avg Delay/Vehicle              25.0783              43.8504               +42.81%
+
+================================================================================
+DQN Wins: 13/14
+Baseline Wins: 1/14
+Average Improvement: +25.90%

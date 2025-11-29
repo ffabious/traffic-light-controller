@@ -1,0 +1,28 @@
+================================================================================
+COMPARISON RESULTS (Multi-Intersection)
+================================================================================
+
+PPO Model: models/ppo_model.pth
+Episodes Evaluated: 100
+
+Metric                         PPO                  Baseline             Improvement    
+-------------------------------------------------------------------------------------
+Total Reward                   -20328.6000          -78553.3700           +74.12%
+Mean Queue Length              2.3846               9.5128                +74.93%
+Max Queue Length               12.1100              40.3300               +69.97%
+Total Throughput               2369.7800            2231.1400              +6.21%
+Mean Wait Time                 18.5050              75.6734               +75.55%
+Throughput Rate                2.3698               2.2311                 +6.21%
+System Efficiency              0.1257               0.0303               +314.48%
+Fairness Index                 0.9748               0.6721                +45.04%
+Service Level                  1.0000               0.9397                 +6.42%
+Congestion Level               0.0596               0.2378                +74.93%
+Queue Imbalance                0.8423               0.8080                 -4.24%
+Queue Oscillation              0.3567               0.3088                -15.49%
+Phase Switches                 92.6100              143.0000              +35.24%
+Avg Delay/Vehicle              7.7993               33.8907               +76.99%
+
+================================================================================
+PPO Wins: 12/14
+Baseline Wins: 2/14
+Average Improvement: +60.03%
